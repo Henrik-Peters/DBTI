@@ -9,15 +9,19 @@ import (
 	"os"
 )
 
+// Blocksize of a block in bytes
 const Blocksize = 4096
 
-type FID int // File ID
+// FID to manage the file ids
+type FID int
 
+// Block definition
 type Block [Blocksize]byte
 
+// Association from the FIDs to the file pointers
 var fileMap = make(map[FID](*os.File))
 
-// Creates a new file with a given name. Return the FID and nil if succesful.
+// Create a new file with a given name. Return the FID and nil if succesful.
 // The file is then open for reading and writing.
 // If unsuccessful, return any FID and an error value describing the error.
 func Create(name string) (FID, error) {
@@ -27,15 +31,15 @@ func Create(name string) (FID, error) {
 	return FID(file.Fd()), err
 }
 
-// Deletes a file with a given name. Return nil if succesful.
+// Delete a file with a given name. Return nil if succesful.
 // If unsuccessful, return an error value describing the error.
 func Delete(name string) error {
 	return os.Remove(name)
 }
 
-// Opens a file with a given name for reading and writing. Return nil if succesful.
+// Open a file with a given name for reading and writing. Return nil if succesful.
 // If unsuccessful, return  any FID and an error value describing the error.
-// Possible errors include FileNotFoundError oder FileAlreadyOpenError
+// Possible errors include FileNotFoundError or FileAlreadyOpenError
 func Open(name string) (FID, error) {
 	var file, err = os.Open(name)
 	fileMap[FID(file.Fd())] = file
@@ -62,7 +66,7 @@ func Length(fileNo FID) (int, error) {
 	return int(stats.Size() / Blocksize), nil
 }
 
-// Reads the block number blockNo from the file fileNo. Counting starts at 0.
+// Read the block number blockNo from the file fileNo. Counting starts at 0.
 // Return a pointer to the block and nil if succesful.
 // If unsuccessful, return nil and an error value describing the error.
 // Possible errors include FileNotOpenError
@@ -89,7 +93,7 @@ func Read(fileNo FID, blockNo int) (*Block, error) {
 	return &block, nil
 }
 
-// Writes the block given by the pointer block to the block number blockNo in
+// Write the block given by the pointer block to the block number blockNo in
 // the file fileNo. Counting starts at 0.
 // Return nil if succesful.
 // If unsuccessful, return an error value describing the error.
