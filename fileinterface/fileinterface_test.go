@@ -24,7 +24,9 @@ func TestDelete(t *testing.T) {
 
 func TestOpen(t *testing.T) {
 	var createFid, _ = Create("testOpen")
+	var createFid2, _ = Create("testOpen2")
 	Close(createFid)
+	Close(createFid2)
 
 	var f FID
 	var err error
@@ -36,7 +38,18 @@ func TestOpen(t *testing.T) {
 		}
 	}
 
+	var f2 FID
+	var err2 error
+	if f2, err2 = Open("testOpen2"); err2 != nil {
+		t.Error(err2)
+	} else {
+		if err2 = Close(f2); err2 != nil {
+			t.Error(err2)
+		}
+	}
+
 	Delete("testOpen")
+	Delete("testOpen2")
 }
 
 var block0 = Block{
