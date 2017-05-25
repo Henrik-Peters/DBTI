@@ -72,22 +72,16 @@ func Length(fileNo FID) (int, error) {
 // Possible errors include FileNotOpenError
 func Read(fileNo FID, blockNo int) (*Block, error) {
 	var file = fileMap[fileNo]
+	var block Block
 
 	if file == nil {
 		return nil, errors.New("FileNotOpenException")
-	}
 
-	var blockBytes = make([]byte, Blocksize)
-	var _, err = file.ReadAt(blockBytes, int64(blockNo*Blocksize))
-
-	if err != nil {
+	} else if _, err := file.Seek(int64(blockNo*Blocksize), 0); err != nil {
 		return nil, err
-	}
 
-	var block Block
-
-	for i, curByte := range blockBytes {
-		block[i] = curByte
+	} else if _, err := file.Read([]byte((block)[:])); err != nil {
+		return nil, err
 	}
 
 	return &block, nil
@@ -103,16 +97,15 @@ func Write(fileNo FID, blockNo int, block *Block) error { //  FileNotOpenExcepti
 
 	if file == nil {
 		return errors.New("FileNotOpenException")
+
+	} else if _, err := file.Seek(int64(blockNo*Blocksize), 0); err != nil {
+		return err
+
+	} else if _, err := file.Write([]byte((*block)[:])); err != nil {
+		return err
 	}
 
-	var blockBytes = make([]byte, Blocksize)
-
-	for i, curBlockData := range block {
-		blockBytes[i] = curBlockData
-	}
-
-	var _, err = file.WriteAt(blockBytes, int64(blockNo*Blocksize))
-	return err
+	return nil
 }
 
 // Close the file given by fileNo. Return nil if succesful.
@@ -126,6 +119,7 @@ func Close(fileNo FID) error {
 		return errors.New("FileNotOpenError")
 
 	} else {
+		delete(fileMap, fileNo)
 		return nil
 	}
 }
