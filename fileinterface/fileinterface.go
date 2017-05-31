@@ -41,7 +41,7 @@ func Delete(name string) error {
 // If unsuccessful, return  any FID and an error value describing the error.
 // Possible errors include FileNotFoundError or FileAlreadyOpenError
 func Open(name string) (FID, error) {
-	var file, err = os.Open(name)
+	var file, err = os.OpenFile(name, os.O_RDWR, 0644)
 	fileMap[FID(file.Fd())] = file
 
 	return FID(file.Fd()), err
@@ -122,6 +122,19 @@ func Close(fileNo FID) error {
 		delete(fileMap, fileNo)
 		return nil
 	}
+}
+
+// CloseAll openend files, for example on a shutdown.
+func CloseAll() error {
+	for fileNo, file := range fileMap {
+
+		if err := file.Close(); err != nil {
+			return err
+		}
+
+		delete(fileMap, fileNo)
+	}
+	return nil
 }
 
 // Return a list of possible file names
