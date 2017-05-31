@@ -12,14 +12,16 @@ import (
 	"github.com/henrik-peters/DBTI/fileinterface"
 )
 
+// FileName of the database file
 const fileName = "simple.db"
 
+// FileID of the database file
 var fileID = fileinterface.FID(-1)
 
 // PageSize of a page in bytes
 const PageSize = fileinterface.Blocksize
 
-// BlocksPerPage : The Number of blocks in page
+// BlocksPerPage will be the number of blocks in page
 const BlocksPerPage = PageSize / fileinterface.Blocksize
 
 // PufferSize will set the maximum number of pages in the puffer
@@ -31,6 +33,7 @@ type Page [PageSize]byte
 // PageFrame with the puffer data and the page data
 type PageFrame struct {
 	page      *Page
+	pageNo    int
 	isFixed   bool
 	isUpdated bool
 }
@@ -60,72 +63,100 @@ var puffer [PufferSize]PageFrame
 // The pageMap will map the pageNumbers to pufferNumbers
 var pageMap = make(map[int]int)
 
+// CacheMissCounter will count the number of pages that must be loaded from disk (or created)
+var CacheMissCounter = 0
+
+// CacheHitCounter will count the number of pages found in the puffer on a request
+var CacheHitCounter = 0
+
 // Request page with number pageNo. Returns pointer to page data in system buffer (and err is nil)
 // If unsuccessful, return nil and an error value describing the error.
 func Request(PageNo int) (*Page, error) {
 	var pufferIndex = pageMap[PageNo]
-	log.Printf("Requesting page %d", PageNo)
 
 	if pufferIndex != 0 && puffer[pufferIndex].page != nil {
-		log.Printf("Cache hit with ID: %d", PageNo)
+		//cache hit; load the page from the puffer
+		CacheHitCounter++
 		return puffer[pufferIndex].page, nil
+	}
 
-	} else {
-		//page is not in puffer; check for load or creation
-		log.Printf("Cache miss with ID: %d", PageNo)
-		var err error
-		var blockLength = -1
+	//Cache miss; check for load or creation
+	CacheMissCounter++
+	var err error
+	var blockLength = -1
 
-		if error := initFileSystem(PageNo); error != nil {
-			return nil, error
-		}
+	if error := initFileSystem(PageNo); error != nil {
+		return nil, error
 
-		if blockLength, err = fileinterface.Length(fileID); err != nil {
-			return nil, err
-		}
+	} else if blockLength, err = fileinterface.Length(fileID); err != nil {
+		return nil, err
+	}
 
-		//Divide by the number of blocks per page to get the pageLength
-		var pageLength = blockLength / BlocksPerPage
+	//Divide by the number of blocks per page to get the pageLength
+	var pageLength = blockLength / BlocksPerPage
 
-		if PageNo >= pageLength {
-			//Create a new page
-			var newPage PageFrame
-			var newPageData Page
+	//Create a new page
+	var newPage PageFrame
+	var newPageData Page
 
-			newPage.page = &newPageData
+	newPage.page = &newPageData
 
-			//Find a slot based on the selected cache strategy
-			pufferIndex = requestPufferSlot()
-			pageMap[PageNo] = pufferIndex
+	if PageNo < pageLength {
+		//Page exists on disk; load the page
+		for blockIndex := 0; blockIndex < BlocksPerPage; blockIndex++ {
+			if fileBlock, err := fileinterface.Read(fileID, 0); err == nil {
 
-			//Save the page in the puffer
-			puffer[pufferIndex] = newPage
-			return newPage.page, nil
+				//Copy the data into the page
+				for byteIndex := 0; byteIndex < fileinterface.Blocksize; byteIndex++ {
+					newPage.page[byteIndex*blockIndex] = fileBlock[byteIndex]
+				}
 
-		} else {
-			//Load the existing page
-
+			} else {
+				return nil, err
+			}
 		}
 	}
 
-	return nil, errors.New("not implemented")
+	//Find a slot for the page
+	newPage.pageNo = PageNo
+	pufferIndex, err = requestPufferSlot()
+
+	if err != nil {
+		return nil, err
+	}
+
+	//Store the new slot position in the pageMap
+	pageMap[PageNo] = pufferIndex
+
+	//Save the page in the puffer
+	puffer[pufferIndex] = newPage
+	return newPage.page, nil
 }
 
 // Create a new free puffer slot based on the selected cache displacement strategy
-func requestPufferSlot() int {
+func requestPufferSlot() (int, error) {
 
 	switch cacheDisplacementStrategy {
 	case RANDOM:
 		rand.Seed(time.Now().Unix())
-		return rand.Intn(PufferSize)
+		randomIndex := rand.Intn(PufferSize+1) + 1
+
+		// Check if there is an old page in the slot that must be written to disk
+		if puffer[randomIndex].pageNo != 0 && puffer[randomIndex].isUpdated {
+			if err := Write(puffer[randomIndex].pageNo); err != nil {
+				return 0, err
+			}
+		}
+
+		return randomIndex, nil
 
 	case FIFO:
 		// TODO
-		return 0
+		return 0, nil
 
 	case LRU:
 		// TODO
-		return 0
+		return 0, nil
 
 	default:
 		panic("unregistered cache displacement strategy selected")
@@ -202,6 +233,13 @@ func Write(pageNo int) error {
 	return nil
 }
 
+// ResetCounters will store zero in both the
+// hit and miss counter
+func ResetCounters() {
+	CacheHitCounter = 0
+	CacheMissCounter = 0
+}
+
 // ---------------------- helper functions ----------------------
 
 // Check if a page is stored in the puffer at the moment
@@ -248,13 +286,11 @@ func initFileSystem(pageNo int) error {
 		return err
 	}
 
-	log.Printf("File blocks: %d", blockLength)
-
 	//Divide by the number of blocks per page to get the pageLength
 	var pageLength = blockLength / BlocksPerPage
 
 	//Extend the file when the pageNo can not be stored in the file
-	if pageNo >= pageLength {
+	if pageNo > pageLength {
 		log.Printf("Extending file from pageLength: %d to %d", pageLength, pageNo)
 
 		var emptyBlock fileinterface.Block
