@@ -5,7 +5,9 @@ package fileinterface
 import (
 	"errors"
 	"log"
+	"math/rand"
 	"os"
+	"time"
 
 	"github.com/henrik-peters/DBTI/fileinterface"
 )
@@ -33,6 +35,25 @@ type PageFrame struct {
 	isUpdated bool
 }
 
+// CacheDisplacement definies the strategy to find slots in the puffer
+type CacheDisplacement int
+
+const (
+	// RANDOM will select a random position in the puffer
+	RANDOM CacheDisplacement = iota
+
+	// FIFO will select the puffer position based on the
+	// First In – First Out principle (Queue)
+	FIFO
+
+	// LRU will select the puffer position based on the
+	// Least recently used principle (based on the time)
+	LRU
+)
+
+// The Current strategy to find slots in the puffer
+const cacheDisplacementStrategy = RANDOM
+
 // Contains the currently puffered pages
 var puffer [PufferSize]PageFrame
 
@@ -46,11 +67,12 @@ func Request(PageNo int) (*Page, error) {
 	log.Printf("Requesting page %d", PageNo)
 
 	if pufferIndex != 0 && puffer[pufferIndex].page != nil {
+		log.Printf("Cache hit with ID: %d", PageNo)
 		return puffer[pufferIndex].page, nil
 
 	} else {
 		//page is not in puffer; check for load or creation
-		log.Printf("Page miss: %d", PageNo)
+		log.Printf("Cache miss with ID: %d", PageNo)
 		var err error
 		var blockLength = -1
 
@@ -72,6 +94,11 @@ func Request(PageNo int) (*Page, error) {
 
 			newPage.page = &newPageData
 
+			//Find a slot based on the selected cache strategy
+			pufferIndex = requestPufferSlot()
+			pageMap[PageNo] = pufferIndex
+
+			//Save the page in the puffer
 			puffer[pufferIndex] = newPage
 			return newPage.page, nil
 
@@ -82,6 +109,27 @@ func Request(PageNo int) (*Page, error) {
 	}
 
 	return nil, errors.New("not implemented")
+}
+
+// Create a new free puffer slot based on the selected cache displacement strategy
+func requestPufferSlot() int {
+
+	switch cacheDisplacementStrategy {
+	case RANDOM:
+		rand.Seed(time.Now().Unix())
+		return rand.Intn(PufferSize)
+
+	case FIFO:
+		// TODO
+		return 0
+
+	case LRU:
+		// TODO
+		return 0
+
+	default:
+		panic("unregistered cache displacement strategy selected")
+	}
 }
 
 // Fix the page pageNo as pinned. It's pointer will stay valid and the page
@@ -146,7 +194,7 @@ func Write(pageNo int) error {
 			block[byteIndex] = (*puffer[pufferIndex].page)[byteIndex]
 		}
 
-		if err := fileinterface.Write(fileID, pageNo*BlocksPerPage+(blockIndex+1), &block); err != nil {
+		if err := fileinterface.Write(fileID, pageNo*BlocksPerPage+blockIndex, &block); err != nil {
 			return err
 		}
 	}
