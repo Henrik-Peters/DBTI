@@ -73,6 +73,26 @@ func TestRequest(t *testing.T) {
 		}
 	}
 
+	//Request page 4
+	if page, err := Request(4); err != nil {
+		t.Error(err)
+	} else {
+
+		if page == nil {
+			t.Error("Page 4 is nil")
+		}
+	}
+
+	//Request page 5
+	if page, err := Request(5); err != nil {
+		t.Error(err)
+	} else {
+
+		if page == nil {
+			t.Error("Page 5 is nil")
+		}
+	}
+
 	WriteCacheStats("TestRequest")
 }
 

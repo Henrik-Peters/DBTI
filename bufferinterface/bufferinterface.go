@@ -54,7 +54,7 @@ const (
 )
 
 // The Current strategy to find slots in the puffer
-const cacheDisplacementStrategy = RANDOM
+const cacheDisplacementStrategy = FIFO
 
 // Contains the currently puffered pages
 var puffer [PufferSize]PageFrame
@@ -67,6 +67,9 @@ var CacheMissCounter = 0
 
 // CacheHitCounter will count the number of pages found in the puffer on a request
 var CacheHitCounter = 0
+
+// The position of the next slot in the puffer array
+var fifoCursor = 0
 
 // Request page with number pageNo. Returns pointer to page data in system buffer (and err is nil)
 // If unsuccessful, return nil and an error value describing the error.
@@ -127,28 +130,41 @@ func Request(PageNo int) (*Page, error) {
 
 	//Save the page in the puffer
 	puffer[pufferIndex] = newPage
+
+	log.Printf("New Page in Puffer with PageNo: %d on PufferIndex: %d", PageNo, pufferIndex)
 	return newPage.page, nil
 }
 
 // Create a new free puffer slot based on the selected cache displacement strategy
 func requestPufferSlot() (int, error) {
+	var pufferIndex = 0
+	var displacePageNo = 0
 
 	switch cacheDisplacementStrategy {
 	case RANDOM:
-		randomIndex := rand.Intn(PufferSize+1) + 1
+		pufferIndex = rand.Intn(PufferSize-1) + 1
 
-		// Check if there is an old page in the slot that must be written to disk
-		if puffer[randomIndex].pageNo != 0 && puffer[randomIndex].isUpdated {
-			if err := Write(puffer[randomIndex].pageNo); err != nil {
-				return 0, err
+		for puffer[pufferIndex].isFixed {
+			pufferIndex = rand.Intn(PufferSize+1) + 1
+		}
+
+		displacePageNo = puffer[pufferIndex].pageNo
+
+	case FIFO:
+		// Move the insert cursor from left to right over the puffer
+		for {
+			fifoCursor++
+
+			if fifoCursor >= PufferSize {
+				fifoCursor = 1
+			}
+
+			if !puffer[fifoCursor].isFixed {
+				break
 			}
 		}
 
-		return randomIndex, nil
-
-	case FIFO:
-		// TODO
-		return 0, nil
+		pufferIndex = fifoCursor
 
 	case LRU:
 		// TODO
@@ -157,6 +173,20 @@ func requestPufferSlot() (int, error) {
 	default:
 		panic("unregistered cache displacement strategy selected")
 	}
+
+	// Check if there is an old page in the slot that must be written to disk
+	if displacePageNo != 0 && puffer[pageMap[displacePageNo]].isUpdated {
+		if err := Write(displacePageNo); err != nil {
+			return 0, err
+		}
+	}
+
+	// Remove the link from the pageMap
+	if pageMap[displacePageNo] != 0 {
+		delete(pageMap, displacePageNo)
+	}
+
+	return pufferIndex, nil
 }
 
 // Fix the page pageNo as pinned. It's pointer will stay valid and the page
