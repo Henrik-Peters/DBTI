@@ -104,11 +104,11 @@ func Request(PageNo int) (*Page, error) {
 	if PageNo < pageLength {
 		//Page exists on disk; load the page
 		for blockIndex := 0; blockIndex < BlocksPerPage; blockIndex++ {
-			if fileBlock, err := fileinterface.Read(fileID, 0); err == nil {
+			if fileBlock, err := fileinterface.Read(fileID, PageNo*(blockIndex+1)); err == nil {
 
 				//Copy the data into the page
 				for byteIndex := 0; byteIndex < fileinterface.Blocksize; byteIndex++ {
-					newPage.page[byteIndex*blockIndex] = fileBlock[byteIndex]
+					newPage.page[byteIndex*(blockIndex+1)] = fileBlock[byteIndex]
 				}
 
 			} else {
@@ -130,8 +130,6 @@ func Request(PageNo int) (*Page, error) {
 
 	//Save the page in the puffer
 	puffer[pufferIndex] = newPage
-
-	log.Printf("New Page in Puffer with PageNo: %d on PufferIndex: %d", PageNo, pufferIndex)
 	return newPage.page, nil
 }
 
@@ -147,8 +145,6 @@ func requestPufferSlot() (int, error) {
 		for puffer[pufferIndex].isFixed {
 			pufferIndex = rand.Intn(PufferSize+1) + 1
 		}
-
-		displacePageNo = puffer[pufferIndex].pageNo
 
 	case FIFO:
 		// Move the insert cursor from left to right over the puffer
@@ -174,8 +170,10 @@ func requestPufferSlot() (int, error) {
 		panic("unregistered cache displacement strategy selected")
 	}
 
+	displacePageNo = puffer[pufferIndex].pageNo
+
 	// Check if there is an old page in the slot that must be written to disk
-	if displacePageNo != 0 && puffer[pageMap[displacePageNo]].isUpdated {
+	if displacePageNo != 0 && puffer[pufferIndex].isUpdated {
 		if err := Write(displacePageNo); err != nil {
 			return 0, err
 		}
