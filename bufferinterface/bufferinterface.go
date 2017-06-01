@@ -7,7 +7,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"time"
 
 	"github.com/henrik-peters/DBTI/fileinterface"
 )
@@ -96,10 +95,8 @@ func Request(PageNo int) (*Page, error) {
 	var pageLength = blockLength / BlocksPerPage
 
 	//Create a new page
-	var newPage PageFrame
 	var newPageData Page
-
-	newPage.page = &newPageData
+	newPage := PageFrame{&newPageData, 0, false, false}
 
 	if PageNo < pageLength {
 		//Page exists on disk; load the page
@@ -138,7 +135,6 @@ func requestPufferSlot() (int, error) {
 
 	switch cacheDisplacementStrategy {
 	case RANDOM:
-		rand.Seed(time.Now().Unix())
 		randomIndex := rand.Intn(PufferSize+1) + 1
 
 		// Check if there is an old page in the slot that must be written to disk

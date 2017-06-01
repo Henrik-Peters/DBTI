@@ -28,6 +28,7 @@ func TestRequest(t *testing.T) {
 		}
 
 		page[0] = 0xE5
+		page[5] = 0xAB
 		Update(2)
 	}
 
@@ -39,9 +40,12 @@ func TestRequest(t *testing.T) {
 		if page == nil {
 			t.Error("Page 3 is nil")
 		}
+
+		page[100] = 0xFF
+		Update(3)
 	}
 
-	//Request page 2 and see if we still out saved value
+	//Request page 2 and see if we still get the saved value
 	if page, err := Request(2); err != nil {
 		t.Error(err)
 	} else {
@@ -50,8 +54,22 @@ func TestRequest(t *testing.T) {
 			t.Error("Page 2 is nil")
 		}
 
-		if page[0] != 0xE5 {
+		if page[0] != 0xE5 || page[5] != 0xAB {
 			t.Error("Page 2 does not contain saved data")
+		}
+	}
+
+	//Request page 3 and see if we still get the saved value
+	if page, err := Request(3); err != nil {
+		t.Error(err)
+	} else {
+
+		if page == nil {
+			t.Error("Page 3 is nil")
+		}
+
+		if page[100] != 0xFF {
+			t.Error("Page 3 does not contain saved data")
 		}
 	}
 
